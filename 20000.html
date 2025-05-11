@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Product Inventory Table</title>
+  <style>
+    .input-box {
+      width: 100%;
+      height: 200px;
+      font-size: 14px;
+      padding: 10px;
+      box-sizing: border-box;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 8px 15px;
+      margin: 10px 10px 20px 0;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    .table-block {
+      margin-bottom: 40px;
+      border: 2px solid #ccc;
+      padding: 10px;
+    }
+    .table-block button {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Paste GO List</h2>
+<textarea id="input-data" class="input-box" placeholder=""></textarea>
+
+<button onclick="remove()">Extract Product Data</button>
+
+
+<h2>Paste C2 Drug Data</h2>
+<textarea id="c2-data" class="input-box"></textarea>
+<button onclick="applyC2()">Apply C2 Updates</button>
+
+<h2>Paste C3–C5 Drug Data</h2>
+<textarea id="c3-data" class="input-box"></textarea>
+<button onclick="applyC3()">Apply C3–C5 Updates</button>
+
+<h2>Paste RX (Gabapentin) Data</h2>
+<textarea id="rx-data" class="input-box"></textarea>
+<button onclick="applyRX()">Apply RX Updates</button>
+
+<h2>Paste RX (ED) Data</h2>
+<textarea id="ed-med-data" class="input-box"></textarea>
+<button onclick="applyEDMed()">Apply ED Medication Updates</button>
+
+<button onclick="normalizeInventoryFields();">zero list</button>
+<button onclick="autoFillContainersFromInventory()">Update Containers</button>
+
+<h2>Open Tables in New Windows For Print:</h2>
+<button onclick="openTableInNewWindow(0)">Open C2 Table</button>
+<button onclick="openTableInNewWindow(1)">Open C3-5 Table</button>
+<button onclick="openTableInNewWindow(2)">Open PSE Tablet</button>
+<button onclick="openTableInNewWindow(3)">Open ED Table</button>
+
+<div id="tables-container"></div>
+
+<script>
+  let allTables = [];
+   function remove() {
+     removeCommas();
+     extractData();
+     
+     
+   }
+   
+   
+   function extractData() {
+    const input = document.getElementById("input-data").value.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    const container = document.getElementById("tables-container");
+    container.innerHTML = '';
+    allTables = [];
+
+    const ndcPattern = /^\d{5}-\d{4}-\d{2}$/;
+    let i = 0;
+    let previousChar = '';
+    let currentTable = createNewTable('Main Product Data');
+    container.appendChild(currentTable.wrapper);
+    allTables.push(currentTable.body);
+    let tbody = currentTable.body;
+
+    while (i < input.length - 3) {
+      const productName = input[i];
+      const ndc = input[i + 1];
+      const schedule = input[i + 2];
+      const dosageForm = input[i + 3];
+      let packSize = '';
+      let linesToAdvance = 4;
+
+      if (i + 4 < input.length) {
+        const nextLine = input[i + 4];
+        if (!isNaN(nextLine)) {
+          packSize = nextLine;
+          linesToAdvance = 5;
+        } else if (i + 5 < input.length && !isNaN(input[i + 5])) {
+          packSize = input[i + 5];
+          linesToAdvance = 6;
+        }
+      }
+
+      if (ndcPattern.test(ndc)) {
+        const firstChar = productName.charAt(0).toUpperCase();
+        if (previousChar && firstChar < previousChar) {
+          currentTable = createNewTable('Main Product Data');
+          container.appendChild(currentTable.wrapper);
+          allTables.push(currentTable.body);
+          tbody = currentTable.body;
+        }
+        previousChar = firstChar;
+
+        const row = tbody.insertRow();
+        row.dataset.ndc = ndc;
+        row.innerHTML = `
+          <td contenteditable="true">${productName}</td>
+          <td contenteditable="true">${ndc}</td>
+          <td contenteditable="true">${schedule}</td>
+          <td contenteditable="true">${dosageForm}</td>
+          <td contenteditable="true">${packSize}</td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+        `;
+      }
+
+      i += linesToAdvance;
+    }
+
+    enableInventoryListeners(tbody);
+  }
+
+  function applyC2() {
+    applyDrugData("c2-data", 0);
+  }
+
+  function applyC3() {
+    applyDrugData("c3-data", 1);
+  }
+
+  function applyRX() {
+    applyDrugData("rx-data", 1, ["Gabapentin", "Gralise", "Horizant"]);
+  }
+
+  function applyEDMed() {
+    applyDrugData("ed-med-data", 3, ["VIAGRA", "REVATIO", "SILDENAFIL", "CIALIS", "TADALAFIL", "LEVITRA", "STAXYN", "VARDENAFIL", "STENDRA", "AVANAFIL"]);
+  }
+
+  function applyDrugData(textareaId, tableIndex, drugFilter = null) {
+    const lines = document.getElementById(textareaId).value.trim().split('\n').filter(Boolean);
+    const ndcPattern = /^\d{5}-\d{4}-\d{2}$/;
+
+    lines.forEach(line => {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 8) return;
+
+      const qtySold = parts.pop();
+      const max = parts.pop();
+      const min = parts.pop();
+      const totalInventory = parts.pop();
+      const acquisitionCost = parts.pop();
+      const packSize = parts.pop();
+      const ndc = parts.pop();
+      const productName = parts.join(' ');
+
+      if (!ndcPattern.test(ndc)) return;
+      if (drugFilter && !drugFilter.some(drug => productName.toLowerCase().includes(drug.toLowerCase()))) return;
+
+      let table = allTables[tableIndex];
+      if (!table) {
+        const newTable = createNewTable(`Drug Data ${tableIndex}`);
+        document.getElementById("tables-container").appendChild(newTable.wrapper);
+        allTables[tableIndex] = newTable.body;
+        table = newTable.body;
+      }
+
+      let found = false;
+      for (const row of table.rows) {
+        if (row.dataset.ndc === ndc) {
+          row.cells[7].textContent = totalInventory;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        const newRow = table.insertRow();
+        newRow.dataset.ndc = ndc;
+        newRow.innerHTML = `
+          <td contenteditable="true">${productName}</td>
+          <td contenteditable="true">${ndc}</td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true">${packSize}</td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true">${totalInventory}</td>
+          <td contenteditable="true"></td>
+          <td contenteditable="true"></td>
+        `;
+        enableInventoryListeners(table);
+      }
+    });
+
+    recalculateGrandTotal(tableIndex);
+    updateDosageForm();
+    sortByProductName();
+  }
+
+  function recalculateGrandTotal(tableIndex) {
+    const table = allTables[tableIndex];
+    if (!table) return;
+
+    for (const row of table.rows) {
+      const totalInventoryCell = row.cells[7];
+      const awaitingReturnCell = row.cells[8];
+      const grandTotalCell = row.cells[9];
+      const fullContainersCell = row.cells[5];
+      const partialContainersCell = row.cells[6];
+
+      const inventory = parseFloat(totalInventoryCell.textContent.trim()) || 0;
+      const awaiting = parseFloat(awaitingReturnCell.textContent.trim()) || 0;
+      const fullContainers = parseFloat(fullContainersCell.textContent.trim()) || 0;
+      const partialContainers = parseFloat(partialContainersCell.textContent.trim()) || 0;
+
+      grandTotalCell.textContent = (inventory + awaiting + fullContainers + partialContainers).toFixed(2);
+    }
+  }
+
+  function createNewTable(title) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-block";
+
+    const table = document.createElement("table");
+    const tbody = document.createElement("tbody");
+
+    const headerRow = document.createElement("tr");
+    headerRow.innerHTML = `
+      <th>Product Name</th>
+      <th>NDC</th>
+      <th>Schedule</th>
+      <th>Dosage Form</th>
+      <th>Pack Size</th>
+      <th># of Full Container(s)</th>
+      <th># of Partial Container(s)</th>
+      <th>Total Inventory</th>
+      <th>Total Awaiting Return</th>
+      <th>Grand Total on Hand</th>
+    `;
+
+    table.appendChild(headerRow);
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+
+    const buttonContainer = document.createElement("div");
+
+    const addRowBtn = document.createElement("button");
+    addRowBtn.textContent = "Add Row";
+    addRowBtn.onclick = () => {
+      const row = tbody.insertRow();
+      for (let i = 0; i < 10; i++) {
+        const cell = row.insertCell();
+        cell.contentEditable = "true";
+        cell.textContent = (i >= 5 && i <= 8) ? "0" : "";
+      }
+      row.dataset.ndc = "";
+      enableInventoryListeners(tbody);
+    };
+
+    const removeRowBtn = document.createElement("button");
+    removeRowBtn.textContent = "Remove Last Row";
+    removeRowBtn.onclick = () => {
+      if (tbody.rows.length > 0) tbody.deleteRow(-1);
+    };
+
+    buttonContainer.appendChild(addRowBtn);
+    buttonContainer.appendChild(removeRowBtn);
+    wrapper.appendChild(buttonContainer);
+
+    return { wrapper, body: tbody };
+  }
+
+  function enableInventoryListeners(tbody) {
+  for (const row of tbody.rows) {
+    const totalInventoryCell = row.cells[7];
+    const awaitingReturnCell = row.cells[8];
+    const grandTotalCell = row.cells[9];
+    const fullContainersCell = row.cells[5];
+    const partialContainersCell = row.cells[6];
+
+    const recalculate = () => {
+      const inventory = parseFloat(totalInventoryCell.textContent.trim()) || 0;
+      const awaiting = parseFloat(awaitingReturnCell.textContent.trim()) || 0;
+      const fullContainers = parseFloat(fullContainersCell.textContent.trim()) || 0;
+      const partialContainers = parseFloat(partialContainersCell.textContent.trim()) || 0;
+      grandTotalCell.textContent = (inventory + awaiting + fullContainers + partialContainers).toFixed(2);
+    };
+
+    // Existing listeners for recalculation
+    totalInventoryCell.addEventListener("input", recalculate);
+    awaitingReturnCell.addEventListener("input", recalculate);
+    fullContainersCell.addEventListener("input", recalculate);
+    partialContainersCell.addEventListener("input", recalculate);
+
+    // New listeners for background color updates
+    for (let i = 0; i < row.cells.length; i++) {
+      const cell = row.cells[i];
+      const highlight = () => {
+        cell.style.backgroundColor = cell.textContent.trim() === "" ? "yellow" : "white";
+      };
+      cell.addEventListener("input", highlight);
+      highlight(); // run once on setup
+    }
+
+    recalculate(); // run once on setup
+  }
+}
+
+
+function sortByProductName() {
+    allTables.forEach(table => {
+      const rows = Array.from(table.rows);
+      rows.sort((a, b) => {
+        const nameA = a.cells[0].textContent.trim().toLowerCase();
+        const nameB = b.cells[0].textContent.trim().toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      table.innerHTML = '';
+      rows.forEach(row => table.appendChild(row));
+    });
+    
+  }
+
+
+
+  function openTableInNewWindow(tableIndex) {
+    const newWindow = window.open();
+    const table = allTables[tableIndex];
+
+    if (!table) {
+      newWindow.document.write("<p>No data available for this table.</p>");
+      return;
+    }
+
+    newWindow.document.write('<html><head><title>Table</title></head><body>');
+    newWindow.document.write('<table border="1">');
+    newWindow.document.write('<thead><tr><th>Product Name</th><th>NDC</th><th>Schedule</th><th>Dosage Form</th><th>Pack Size</th><th># of Full Container(s)</th><th># of Partial Container(s)</th><th>Total Inventory</th><th>Total Awaiting Return</th><th>Grand Total on Hand</th></tr></thead>');
+    newWindow.document.write('<tbody>');
+
+    for (const row of table.rows) {
+      newWindow.document.write('<tr>');
+      for (let i = 0; i < row.cells.length; i++) {
+        newWindow.document.write(`<td>${row.cells[i].textContent}</td>`);
+      }
+      newWindow.document.write('</tr>');
+    }
+
+    newWindow.document.write('</tbody></table></body></html>');
+  }
+  
+  
+  
+ function normalizeInventoryFields() {
+    allTables.forEach(table => {
+      Array.from(table.rows).forEach(row => {
+        const fullContainerCell = row.cells[5];
+        const partialContainerCell = row.cells[6];
+        const totalInventoryCell = row.cells[7];
+        const awaitingReturnCell = row.cells[8];
+
+        if (!fullContainerCell.textContent.trim()) fullContainerCell.textContent = '0';
+        if (!partialContainerCell.textContent.trim()) partialContainerCell.textContent = '0';
+        if (!totalInventoryCell.textContent.trim()) totalInventoryCell.textContent = '0';
+        if (!awaitingReturnCell.textContent.trim()) awaitingReturnCell.textContent = '0';
+
+        const totalInventory = parseFloat(totalInventoryCell.textContent) || 0;
+        const awaitingReturn = parseFloat(awaitingReturnCell.textContent) || 0;
+        row.cells[9].textContent = totalInventory + awaitingReturn;
+      });
+    });
+    
+    
+  }
+  
+  function updateDosageForm() {
+  allTables.forEach(table => {
+    Array.from(table.rows).forEach(row => {
+      const productName = row.cells[0].textContent.trim();
+      const dosageFormCell = row.cells[3];
+
+      if (!dosageFormCell.textContent.trim()) {
+        let dosageForm = "";
+
+        if (productName.includes("CHEWABLE") || productName.includes("CHEW TAB") || productName.includes("CHEW TB")) {
+          dosageForm = "TABLET, CHEWABLE";
+        } else if (productName.includes("TABLET") || productName.includes("TAB")) {
+          dosageForm = "TABLET";
+        } else if (productName.includes("CAPSULE") || productName.includes("CAP") || productName.includes("CP")) {
+          dosageForm = "CAPSULE";
+        } else if (productName.includes("PATCH")) {
+          dosageForm = "PATCH";
+        } else if (productName.includes("SOLUTION") || productName.includes("SOLN")) {
+          dosageForm = "SOLUTION";
+        } else if (productName.includes("SUSPENSION") || productName.includes("SUSP")) {
+          dosageForm = "SUSPENSION";
+        } else if (productName.includes("SYRUP")) {
+          dosageForm = "SYRUP";
+        } else if (productName.includes("GEL")) {
+          dosageForm = "GEL";
+        } else if (productName.includes("OINTMENT") || productName.includes("OINT")) {
+          dosageForm = "OINTMENT";
+        }
+
+        if (dosageForm) {
+          dosageFormCell.textContent = dosageForm;
+        }
+      }
+    });
+  });
+}
+
+
+function removeCommas() {
+  const inputBox = document.getElementById("input-data");
+  inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
+}
+
+
+function autoFillContainersFromInventory() {
+  allTables.forEach(table => {
+    Array.from(table.rows).forEach(row => {
+      const packSize = parseFloat(row.cells[4].textContent.trim());
+      const totalInventory = parseFloat(row.cells[7].textContent.trim());
+
+      if (!isNaN(totalInventory) && totalInventory > 0 && !isNaN(packSize) && packSize > 0) {
+        const full = Math.floor(totalInventory / packSize);
+        const partial = totalInventory % packSize > 0 ? 1 : 0;
+
+        row.cells[5].textContent = full;
+        row.cells[6].textContent = partial;
+      }
+    });
+  });
+  fillScheduleForTable1();
+}
+
+function fillScheduleForTable1() {
+  const table = allTables[0];
+  if (!table) return;
+
+  for (const row of table.rows) {
+    const scheduleCell = row.cells[2];
+    if (!scheduleCell.textContent.trim()) {
+      scheduleCell.textContent = "2";
+    }
+  }
+  updateCellColors();
+}
+
+  
+function updateCellColors() {
+  allTables.forEach(table => {
+    Array.from(table.rows).forEach(row => {
+      for (let i = 0; i < row.cells.length; i++) {
+        const cell = row.cells[i];
+        if (cell.textContent.trim() === "") {
+          cell.style.backgroundColor = "yellow";
+        } else {
+          cell.style.backgroundColor = "white";
+        }
+      }
+    });
+  });
+}
+  
+  
+</script>
+
+</body>
+</html>
