@@ -626,7 +626,7 @@ function importFromJSON(event) {
           });
           row.dataset.ndc = rowData[1] || ""; // assuming NDC is at column index 1
         });
-
+clearGrandTotalColors();
         enableInventoryListeners(newTable.body);
       });
 
@@ -636,6 +636,17 @@ function importFromJSON(event) {
   };
 
   reader.readAsText(file);
+}
+
+  function clearGrandTotalColors() {
+  allTables.forEach(table => {
+    Array.from(table.rows).forEach(row => {
+      const grandTotalCell = row.cells[9]; // column 9 = Grand Total
+      if (grandTotalCell) {
+        grandTotalCell.style.backgroundColor = "white";
+      }
+    });
+  });
 }
 
 
