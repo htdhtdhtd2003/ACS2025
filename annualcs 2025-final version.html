@@ -171,18 +171,22 @@
   }
 
   function applyC2() {
+     removeCommas2()
     applyDrugData("c2-data", 0);
   }
 
   function applyC3() {
+   removeCommas3()
     applyDrugData("c3-data", 1);
   }
 
   function applyRX() {
+     removeCommas4()
     applyDrugData("rx-data", 1, ["Gabapentin", "Gralise", "Horizant"]);
   }
 
   function applyEDMed() {
+     removeCommas5()
     applyDrugData("ed-med-data", 3, ["VIAGRA", "REVATIO", "SILDENAFIL", "CIALIS", "TADALAFIL", "LEVITRA", "STAXYN", "VARDENAFIL", "STENDRA", "AVANAFIL"]);
   }
 
@@ -466,6 +470,26 @@ function removeCommas() {
   inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
 }
 
+function removeCommas2() {
+  const inputBox = document.getElementById("c2-data");
+  inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
+}
+
+function removeCommas3() {
+  const inputBox = document.getElementById("c3-data");
+  inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
+}
+
+function removeCommas4() {
+  const inputBox = document.getElementById("rx-data");
+  inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
+  }
+  
+  function removeCommas5() {
+  const inputBox = document.getElementById("ed-med-data");
+  inputBox.value = inputBox.value.replace(/(\d+),(\d{3})/g, '$1$2');
+}
+  
 function autoFillContainersFromInventory() {
   allTables.forEach(table => {
     Array.from(table.rows).forEach(row => {
