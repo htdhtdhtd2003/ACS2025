@@ -168,6 +168,7 @@
     }
 
     enableInventoryListeners(tbody);
+     checkTableForBlanks();
   }
 
   function applyC2() {
@@ -249,6 +250,7 @@
     recalculateGrandTotal(tableIndex);
     updateDosageForm();
     sortByProductName();
+    checkTableForBlanks();
   }
 
   function recalculateGrandTotal(tableIndex) {
@@ -650,7 +652,8 @@ function importFromJSON(event) {
           });
           row.dataset.ndc = rowData[1] || ""; // assuming NDC is at column index 1
         });
-clearGrandTotalColors();
+
+        checkTableForBlanks();
         enableInventoryListeners(newTable.body);
       });
 
@@ -673,7 +676,15 @@ clearGrandTotalColors();
   });
 }
 
-
+function checkTableForBlanks() {
+  allTables.forEach(table => {
+    Array.from(table.rows).forEach(row => {
+      Array.from(row.cells).forEach(cell => {
+        cell.style.backgroundColor = cell.textContent.trim() === "" ? "yellow" : "white";
+      });
+    });
+  });
+}
 
 </script>
 
